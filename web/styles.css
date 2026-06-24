@@ -1,0 +1,380 @@
+:root {
+  --font-display: "SF Pro Display", "Bahnschrift", -apple-system, sans-serif;
+  --font-body: "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", monospace;
+  --c-bg: #f2f2f7;
+  --c-surface: #ffffff;
+  --c-surface-hover: #f5f5f7;
+  --c-border: rgba(0, 0, 0, 0.05);
+  --c-text-primary: #1c1c1e;
+  --c-text-secondary: #3a3a3c;
+  --c-text-muted: #8e8e93;
+  --c-accent: #007aff;
+  --c-accent-hover: #0063cc;
+  --c-success: #34c759;
+  --c-danger: #ff3b30;
+  --c-danger-hover: #e02d24;
+  --c-warning: #ff9500;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --shadow-layered: 0 4px 18px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.01);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background-color: var(--c-bg);
+  color: var(--c-text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  padding: var(--space-6) var(--space-4);
+  display: flex;
+  justify-content: center;
+}
+
+.app-container {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 var(--space-2) var(--space-4) var(--space-2);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.app-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.app-subtitle {
+  color: var(--c-text-secondary);
+  font-size: 12px;
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+section { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 var(--space-2);
+}
+
+.section-header h2 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--c-text-muted);
+}
+
+/* 状态卡片网格 */
+.status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.status-card {
+  background: var(--c-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-layered);
+  border: 1px solid rgba(0, 0, 0, 0.02);
+  text-align: center;
+}
+
+.card-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-2);
+}
+
+.card-state {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--c-text-primary);
+  min-height: 28px;
+}
+
+.card-detail {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--c-text-muted);
+  margin-top: var(--space-2);
+  min-height: 16px;
+}
+
+.card-state.state-idle { color: var(--c-text-muted); }
+.card-state.state-running { color: var(--c-accent); }
+.card-state.state-done { color: var(--c-success); }
+.card-state.state-error { color: var(--c-danger); }
+
+/* 进度条 */
+.progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background-color: rgba(0, 122, 255, 0.03);
+  border: 1px solid rgba(0, 122, 255, 0.06);
+  border-radius: var(--radius-lg);
+}
+
+.progress-bar-wrapper {
+  background-color: rgba(0,0,0,0.05);
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  background-color: var(--c-accent);
+  height: 100%;
+  transition: width 250ms ease;
+}
+
+.progress-text {
+  font-size: 11px;
+  color: var(--c-accent);
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+/* 按钮 */
+.action-bar {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-2);
+}
+
+.btn {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 180ms ease;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+}
+
+.btn:active { transform: scale(0.95); opacity: 0.9; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+.btn-primary { background-color: var(--c-accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background-color: var(--c-accent-hover); }
+
+.btn-danger { background-color: var(--c-danger); color: #fff; }
+.btn-danger:hover:not(:disabled) { background-color: var(--c-danger-hover); }
+
+/* 日志 */
+.app-footer {
+  border-top: 1px solid var(--c-border);
+  padding-top: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.log-wrapper {
+  background-color: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  max-height: 200px;
+  overflow-y: auto;
+  box-shadow: var(--shadow-layered);
+}
+
+.log-console {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--c-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+/* 设置卡片 */
+.settings-card {
+  background: var(--c-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-layered);
+  border: 1px solid rgba(0, 0, 0, 0.02);
+  overflow: hidden;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--c-border);
+  gap: var(--space-4);
+}
+
+.setting-row-last { border-bottom: none; }
+.sub-setting { background: rgba(0, 0, 0, 0.01); }
+
+.setting-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text-secondary);
+  white-space: nowrap;
+  min-width: 60px;
+}
+
+/* 模式选择器 - iOS 分段控件风格 */
+.mode-group {
+  display: flex;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.mode-option { display: contents; }
+.mode-option input[type="radio"] { display: none; }
+
+.mode-btn {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--c-text-secondary);
+  transition: all 180ms ease;
+  text-align: center;
+  user-select: none;
+}
+
+.mode-option input[type="radio"]:checked + .mode-btn {
+  background: var(--c-surface);
+  color: var(--c-text-primary);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+/* 输入框 */
+.input-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.input-field {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+  color: var(--c-text-primary);
+  outline: none;
+  transition: border-color 180ms ease;
+  width: 120px;
+}
+
+.input-field:focus {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.15);
+}
+
+.input-suffix {
+  font-size: 12px;
+  color: var(--c-text-muted);
+}
+
+/* iOS 开关 */
+.toggle-switch-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.toggle-slider {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #e5e5ea;
+  border-radius: 12px;
+  transition: background-color 220ms ease;
+}
+
+.toggle-slider::after {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  top: 2px;
+  left: 2px;
+  transition: transform 220ms cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: var(--c-success);
+}
+
+.toggle-switch input:checked + .toggle-slider::after {
+  transform: translateX(20px);
+}
+
+.toggle-text {
+  font-size: 13px;
+  color: var(--c-text-secondary);
+}
+
+.hidden { display: none !important; }

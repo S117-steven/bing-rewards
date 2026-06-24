@@ -1,0 +1,13 @@
+config.json
+logs/
+bing_logs/
+*.log
+__pycache__/
+.venv/
+.venv*/
+Edge_Cloned_Profile/
+Edge_Isolated_Small_Account/
+Edge_User_Data_Bot_Profile/
+msedgedriver.exe
+*.pyc
+.idea/
