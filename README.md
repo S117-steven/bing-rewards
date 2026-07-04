@@ -52,49 +52,33 @@ cd bing-rewards
 
 在 `bing-rewards` 文件夹里，双击 `setup.bat`。
 
-它会自动做 4 件事：
-1. 创建 Python 虚拟环境（一个独立的 Python 环境，不影响系统）
-2. 安装需要的依赖包（selenium、pywebview、psutil）
-3. 生成配置文件 `config.json`
+它会自动做 5 件事：
+1. 创建 Python 虚拟环境
+2. 安装需要的依赖包
+3. **自动检测你的 Windows 用户名和 Edge 配置**，生成 `config.json`
 4. 在桌面创建快捷方式
 
 安装过程大约需要 1-2 分钟，看到 `Setup complete!` 就说明成功了。
 
-## 第三步：编辑配置文件
+**大部分情况下你不需要手动编辑 config.json**，setup.bat 会自动检测正确的路径。
 
-用记事本打开 `config.json`（在 `bing-rewards` 文件夹里），修改以下内容：
+## 第三步：检查配置（一般不需要改）
+
+用记事本打开 `config.json`（在 `bing-rewards` 文件夹里），确认里面的路径是对的：
 
 ```json
 {
   "python_exe": ".venv\\Scripts\\python.exe",
-  "edge_user_data_path": "C:\\Users\\你的Windows用户名\\AppData\\Local\\Microsoft\\Edge\\User Data",
+  "edge_user_data_path": "C:\\Users\\zhangsan\\AppData\\Local\\Microsoft\\Edge\\User Data",
   "edge_source_profile": "Profile 1",
   "search_count": 23
 }
 ```
 
-**只需要改两个地方：**
+**只有以下情况需要手动改：**
 
-### 1. `edge_user_data_path`（Edge 数据目录）
-
-把你 Windows 用户名填进去。例如你的用户名是 `zhangsan`：
-
-```
-C:\\Users\\zhangsan\\AppData\\Local\\Microsoft\\Edge\\User Data
-```
-
-**不知道自己的用户名？** 打开文件管理器，看左边的「快速访问」上方显示的名字，或者在终端输入 `whoami`。
-
-**不确定路径对不对？** 在文件管理器的地址栏输入 `%LOCALAPPDATA%\Microsoft\Edge\User Data`，如果能打开就说明路径是对的。
-
-### 2. `edge_source_profile`（Edge 配置名）
-
-1. 打开 Edge 浏览器
-2. 在地址栏输入 `edge://version` 回车
-3. 找到「个人资料路径」这一行
-4. 路径末尾的 `Profile 1` 或 `Profile 2` 就是你要填的值
-
-例如路径是 `C:\Users\zhangsan\AppData\Local\Microsoft\Edge\User Data\Profile 2`，那就填 `Profile 2`。
+1. **`edge_source_profile` 不对**：去 Edge 浏览器地址栏输入 `edge://version`，找到「个人资料路径」末尾的 `Profile 1` 或 `Profile 2`，改成对应的值
+2. **`edge_user_data_path` 不对**：一般不需要改，除非你把 Edge 装在了非默认位置
 
 ## 第四步：首次运行
 
