@@ -21,7 +21,7 @@ _cfg_path = REPO_DIR / "config.json"
 _config = json.loads(_cfg_path.read_text(encoding="utf-8")) if _cfg_path.exists() else {}
 
 YOUR_USER_DATA_PATH = _config.get("edge_user_data_path", r"C:\Users\Default\AppData\Local\Microsoft\Edge\User Data")
-SEARCH_COUNT = _config.get("search_count", 33)
+SEARCH_COUNT = _config.get("search_count", 23)
 
 # 基础词库
 WORD_LIST = [

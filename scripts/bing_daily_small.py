@@ -23,7 +23,7 @@ _config = json.loads(_cfg_path.read_text(encoding="utf-8")) if _cfg_path.exists(
 
 YOUR_USER_DATA_PATH = _config.get("edge_user_data_path", r"C:\Users\Default\AppData\Local\Microsoft\Edge\User Data")
 SOURCE_PROFILE_NAME = _config.get("edge_source_profile", "Profile 1")
-SEARCH_COUNT = _config.get("search_count", 33)
+SEARCH_COUNT = _config.get("search_count", 23)
 
 # ===========================================
 
