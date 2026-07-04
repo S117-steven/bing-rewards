@@ -197,87 +197,87 @@ def perform_daily_searches(driver):
 
 
 def complete_daily_set(driver):
+    """通过搜索页面的 rewards 侧边栏完成 Daily Set"""
     print("\n" + "=" * 30)
     print(">>> [小号] 阶段 2: 开始每日任务")
     print("=" * 30)
 
-    try:
-        driver.get("https://rewards.bing.com/")
-        time.sleep(5)
-        driver.execute_script("window.scrollBy(0, 300);")
+    def open_sidebar():
+        medal = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "div[data-rewards-widget] .b_clickarea"))
+        )
+        medal.click()
+        time.sleep(4)
+        iframe = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "#rewid-f iframe"))
+        )
+        driver.switch_to.frame(iframe)
         time.sleep(2)
 
-        try:
-            daily_set_container = driver.find_element(By.XPATH, "//div[@id='daily-sets']")
-        except:
+    def find_daily_links():
+        links = driver.find_elements(By.TAG_NAME, "a")
+        daily = []
+        for link in links:
+            href = link.get_attribute("href") or ""
+            text = link.text.strip() if link.text else ""
+            if "bing.com/search" in href and text and len(text) > 5:
+                daily.append(link)
+        return daily
+
+    try:
+        print("正在打开 Bing 搜索页...")
+        driver.get("https://www.bing.com")
+        time.sleep(3)
+
+        completed = 0
+        for task_num in range(3):
             try:
-                daily_set_container = driver.find_element(By.XPATH, "//mee-rewards-daily-set-section-content")
-            except:
-                return
+                print(f"\n>>> [小号任务 {task_num + 1}] 打开侧边栏...")
+                open_sidebar()
 
-        potential_cards = daily_set_container.find_elements(By.XPATH, ".//mee-card")
-        valid_cards = [c for c in potential_cards if c.is_displayed()]
-        card_count = len(valid_cards)
+                daily_links = find_daily_links()
+                print(f"    找到 {len(daily_links)} 个 Daily Set 任务")
 
-        for i in range(min(card_count, 3)):
-            try:
-                print(f"\n>>> [小号任务 {i + 1}] 准备执行...")
-                try:
-                    container_now = driver.find_element(By.XPATH,
-                                                        "//div[@id='daily-sets'] | //mee-rewards-daily-set-section-content")
-                    cards_now = container_now.find_elements(By.XPATH, ".//mee-card")
-                    cards_now = [c for c in cards_now if c.is_displayed()]
-                except:
-                    continue
+                if task_num >= len(daily_links):
+                    print(f"    没有更多任务了，共完成 {completed} 个")
+                    break
 
-                if i >= len(cards_now): break
-                card_item = cards_now[i]
-                driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", card_item)
-                time.sleep(1.5)
+                title = daily_links[task_num].text.split('\n')[0]
+                print(f"    点击: {title}")
 
-                try:
-                    target_link = card_item.find_element(By.TAG_NAME, "a")
-                except:
-                    target_link = card_item
+                driver.execute_script("arguments[0].target = '_self';", daily_links[task_num])
+                daily_links[task_num].click()
+                time.sleep(6)
 
-                highlight_element(driver, target_link)
+                driver.switch_to.default_content()
+                print(f"    [状态] 跳转成功: {driver.current_url[:60]}...")
 
-                # 强制在同一标签页打开，避免新窗口路由到其他 Edge 进程
-                try:
-                    driver.execute_script("arguments[0].target = '_self';", target_link)
-                except:
-                    pass
-
-                click_success = False
-                try:
-                    ActionChains(driver).move_to_element(target_link).click().perform()
-                    click_success = True
-                except:
-                    try:
-                        driver.execute_script("arguments[0].click();", target_link)
-                        click_success = True
-                    except:
-                        pass
-
-                if not click_success: continue
-
-                # 同一标签页内浏览
-                time.sleep(random.uniform(5, 8))
                 driver.execute_script("window.scrollTo(0, 200);")
-                time.sleep(random.uniform(2, 4))
-                print("  [状态] 任务浏览完成，返回 rewards 页面")
+                time.sleep(random.uniform(3, 5))
 
-                # 直接导航回 rewards 页面
-                driver.get("https://rewards.bing.com/")
+                completed += 1
+                print(f"    [状态] 任务 {task_num + 1} 完成")
+
+                driver.get("https://www.bing.com")
                 time.sleep(3)
-            except:
+
+            except Exception as e:
+                print(f"    [错误] 任务 {task_num + 1} 异常: {e}")
+                driver.switch_to.default_content()
                 try:
-                    driver.get("https://rewards.bing.com/")
+                    driver.get("https://www.bing.com")
                     time.sleep(3)
                 except:
                     pass
-    except:
-        pass
+
+        print(f"\n>>> [小号] Daily Set 完成: {completed} 个任务")
+
+    except Exception as e:
+        print(f"每日任务全局错误: {e}")
+        try:
+            driver.switch_to.default_content()
+        except:
+            pass
 
 
 def main():
