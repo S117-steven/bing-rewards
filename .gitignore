@@ -11,3 +11,6 @@ Edge_User_Data_Bot_Profile/
 msedgedriver.exe
 *.pyc
 .idea/
+test_*.py
+test_*.png
+*.png
