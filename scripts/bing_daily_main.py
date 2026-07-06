@@ -183,20 +183,45 @@ def complete_daily_set(driver):
         time.sleep(2)
 
     def find_daily_links():
-        """在 iframe 中查找 Daily Set 任务链接"""
-        links = driver.find_elements(By.TAG_NAME, "a")
-        daily = []
-        print(f"    [debug] iframe 内共 {len(links)} 个 <a> 标签")
-        for idx, link in enumerate(links):
-            href = link.get_attribute("href") or ""
-            text = link.text.strip() if link.text else ""
-            has_search = "bing.com/search" in href
-            long_enough = len(text) > 5
-            print(f"    [debug] [{idx}] href={href[:60]} text='{text[:40]}' search={has_search} len_ok={long_enough}")
-            if has_search and text and long_enough:
-                daily.append(link)
-        print(f"    [debug] 匹配到 {len(daily)} 个 Daily Set 任务")
-        return daily
+        """在 iframe 中查找 Daily Set 任务卡片内的可点击元素"""
+        # 方法1：直接找 dailycheckin_partnercard 中包含「每日集」的卡片
+        cards = driver.find_elements(By.CSS_SELECTOR, ".dailycheckin_partnercard")
+        for card in cards:
+            text = card.text.strip() if card.text else ""
+            if "每日集" in text or "Daily Set" in text.upper():
+                # 找到每日集卡片，返回卡片内所有链接
+                links = card.find_elements(By.TAG_NAME, "a")
+                visible_links = [l for l in links if l.is_displayed()]
+                print(f"    [debug] 找到每日集卡片，内含 {len(visible_links)} 个链接")
+                for i, l in enumerate(visible_links):
+                    print(f"    [debug]   [{i}] href={l.get_attribute('href')[:60]} text='{l.text[:40]}'")
+                return visible_links
+
+        # 方法2：找 id='DailySet' 的标题，然后找相邻的卡片
+        header = driver.find_elements(By.CSS_SELECTOR, "#DailySet, [id='DailySet']")
+        if header:
+            print(f"    [debug] 找到 DailySet 标题")
+            # 向上找到 threeOffers 区域
+            parent = driver.execute_script("""
+                var el = arguments[0];
+                for (var i = 0; i < 5; i++) {
+                    el = el.parentElement;
+                    if (el && el.querySelectorAll('.dailycheckin_partnercard').length > 0) return el;
+                }
+                return null;
+            """, header[0])
+            if parent:
+                cards = parent.find_elements(By.CSS_SELECTOR, ".dailycheckin_partnercard")
+                for card in cards:
+                    text = card.text.strip() if card.text else ""
+                    if "每日集" in text or "Daily Set" in text.upper():
+                        links = card.find_elements(By.TAG_NAME, "a")
+                        visible_links = [l for l in links if l.is_displayed()]
+                        print(f"    [debug] 通过标题找到每日集卡片，内含 {len(visible_links)} 个链接")
+                        return visible_links
+
+        print("    [debug] 未找到每日集卡片")
+        return []
 
     try:
         # 确保在搜索页面

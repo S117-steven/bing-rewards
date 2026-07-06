@@ -215,19 +215,39 @@ def complete_daily_set(driver):
         time.sleep(2)
 
     def find_daily_links():
-        links = driver.find_elements(By.TAG_NAME, "a")
-        daily = []
-        print(f"    [debug] iframe 内共 {len(links)} 个 <a> 标签")
-        for idx, link in enumerate(links):
-            href = link.get_attribute("href") or ""
-            text = link.text.strip() if link.text else ""
-            has_search = "bing.com/search" in href
-            long_enough = len(text) > 5
-            print(f"    [debug] [{idx}] href={href[:60]} text='{text[:40]}' search={has_search} len_ok={long_enough}")
-            if has_search and text and long_enough:
-                daily.append(link)
-        print(f"    [debug] 匹配到 {len(daily)} 个 Daily Set 任务")
-        return daily
+        cards = driver.find_elements(By.CSS_SELECTOR, ".dailycheckin_partnercard")
+        for card in cards:
+            text = card.text.strip() if card.text else ""
+            if "每日集" in text or "Daily Set" in text.upper():
+                links = card.find_elements(By.TAG_NAME, "a")
+                visible_links = [l for l in links if l.is_displayed()]
+                print(f"    [debug] 找到每日集卡片，内含 {len(visible_links)} 个链接")
+                for i, l in enumerate(visible_links):
+                    print(f"    [debug]   [{i}] href={l.get_attribute('href')[:60]} text='{l.text[:40]}'")
+                return visible_links
+
+        header = driver.find_elements(By.CSS_SELECTOR, "#DailySet, [id='DailySet']")
+        if header:
+            parent = driver.execute_script("""
+                var el = arguments[0];
+                for (var i = 0; i < 5; i++) {
+                    el = el.parentElement;
+                    if (el && el.querySelectorAll('.dailycheckin_partnercard').length > 0) return el;
+                }
+                return null;
+            """, header[0])
+            if parent:
+                cards = parent.find_elements(By.CSS_SELECTOR, ".dailycheckin_partnercard")
+                for card in cards:
+                    text = card.text.strip() if card.text else ""
+                    if "每日集" in text or "Daily Set" in text.upper():
+                        links = card.find_elements(By.TAG_NAME, "a")
+                        visible_links = [l for l in links if l.is_displayed()]
+                        print(f"    [debug] 通过标题找到每日集卡片，内含 {len(visible_links)} 个链接")
+                        return visible_links
+
+        print("    [debug] 未找到每日集卡片")
+        return []
 
     try:
         print("正在打开 Bing 搜索页...")
