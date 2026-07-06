@@ -215,38 +215,44 @@ def complete_daily_set(driver):
         time.sleep(2)
 
     def find_daily_links():
+        try:
+            driver.execute_script("var el = document.getElementById('DailySet'); if(el) el.scrollIntoView({block:'start'});")
+            time.sleep(1)
+        except:
+            pass
+
+        # 方法1：找 dailycheckin_partnercard 中的「每日集」卡片
         cards = driver.find_elements(By.CSS_SELECTOR, ".dailycheckin_partnercard")
         for card in cards:
             text = card.text.strip() if card.text else ""
             if "每日集" in text or "Daily Set" in text.upper():
                 links = card.find_elements(By.TAG_NAME, "a")
                 visible_links = [l for l in links if l.is_displayed()]
-                print(f"    [debug] 找到每日集卡片，内含 {len(visible_links)} 个链接")
-                for i, l in enumerate(visible_links):
-                    print(f"    [debug]   [{i}] href={l.get_attribute('href')[:60]} text='{l.text[:40]}'")
-                return visible_links
+                if visible_links:
+                    print(f"    [debug] 方法1: 找到每日集卡片，{len(visible_links)} 个链接")
+                    return visible_links
 
-        header = driver.find_elements(By.CSS_SELECTOR, "#DailySet, [id='DailySet']")
-        if header:
-            parent = driver.execute_script("""
-                var el = arguments[0];
-                for (var i = 0; i < 5; i++) {
-                    el = el.parentElement;
-                    if (el && el.querySelectorAll('.dailycheckin_partnercard').length > 0) return el;
-                }
-                return null;
-            """, header[0])
-            if parent:
-                cards = parent.find_elements(By.CSS_SELECTOR, ".dailycheckin_partnercard")
-                for card in cards:
-                    text = card.text.strip() if card.text else ""
-                    if "每日集" in text or "Daily Set" in text.upper():
-                        links = card.find_elements(By.TAG_NAME, "a")
-                        visible_links = [l for l in links if l.is_displayed()]
-                        print(f"    [debug] 通过标题找到每日集卡片，内含 {len(visible_links)} 个链接")
-                        return visible_links
+        # 方法2：找 promo-title 元素，然后在其父容器中找链接
+        promo_titles = driver.find_elements(By.CSS_SELECTOR, ".promo-title, [class*='promo']")
+        for pt in promo_titles:
+            text = pt.text.strip() if pt.text else ""
+            if text and len(text) > 3 and ("购物" in text or "探索" in text or "大雾" in text or "银河" in text or "传奇" in text or "喜剧" in text or "冰川" in text):
+                parent = driver.execute_script("""
+                    var el = arguments[0];
+                    for (var i = 0; i < 5; i++) {
+                        el = el.parentElement;
+                        if (el && el.querySelectorAll('a').length > 0) return el;
+                    }
+                    return null;
+                """, pt)
+                if parent:
+                    links = parent.find_elements(By.TAG_NAME, "a")
+                    task_links = [l for l in links if "bing.com/search" in (l.get_attribute("href") or "") or "bing.com/shop" in (l.get_attribute("href") or "")]
+                    if task_links:
+                        print(f"    [debug] 方法2: 通过 promo-title 找到 {len(task_links)} 个任务链接")
+                        return task_links
 
-        print("    [debug] 未找到每日集卡片")
+        print("    [debug] 未找到 Daily Set 任务")
         return []
 
     try:
