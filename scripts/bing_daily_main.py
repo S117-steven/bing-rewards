@@ -186,11 +186,16 @@ def complete_daily_set(driver):
         """在 iframe 中查找 Daily Set 任务链接"""
         links = driver.find_elements(By.TAG_NAME, "a")
         daily = []
-        for link in links:
+        print(f"    [debug] iframe 内共 {len(links)} 个 <a> 标签")
+        for idx, link in enumerate(links):
             href = link.get_attribute("href") or ""
             text = link.text.strip() if link.text else ""
-            if "bing.com/search" in href and text and len(text) > 5:
+            has_search = "bing.com/search" in href
+            long_enough = len(text) > 5
+            print(f"    [debug] [{idx}] href={href[:60]} text='{text[:40]}' search={has_search} len_ok={long_enough}")
+            if has_search and text and long_enough:
                 daily.append(link)
+        print(f"    [debug] 匹配到 {len(daily)} 个 Daily Set 任务")
         return daily
 
     try:
