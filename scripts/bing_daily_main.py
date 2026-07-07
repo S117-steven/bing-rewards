@@ -170,22 +170,33 @@ def complete_daily_set(driver):
     print("=" * 30)
 
     def open_sidebar():
-        """关闭旧 iframe，点击金牌图标，切换到新 iframe"""
-        # 先关闭旧的 iframe
+        """关闭旧侧边栏，点击金牌图标，切换到新 iframe"""
+        # 先回到主页面
         try:
             driver.switch_to.default_content()
         except:
             pass
-        # 通过 JS 关闭 flyout
+        # 用 JS 关闭 flyout
         try:
             driver.execute_script("""
+                // 方法1：点击关闭按钮
+                var closeBtn = document.querySelector('#rewid-f .close_rewards_panel, #rewid-f button[class*=close]');
+                if (closeBtn) closeBtn.click();
+                // 方法2：移除 flyout 内容
                 var flyout = document.getElementById('rewid-f');
                 if (flyout) {
                     var iframe = flyout.querySelector('iframe');
                     if (iframe) iframe.remove();
+                    flyout.style.display = 'none';
                 }
             """)
             time.sleep(1)
+        except:
+            pass
+        # 如果还有遮挡，点击页面空白处关闭
+        try:
+            driver.find_element(By.TAG_NAME, "body").click()
+            time.sleep(0.5)
         except:
             pass
 
@@ -282,9 +293,8 @@ def complete_daily_set(driver):
                 title = daily_links[task_num].text.split('\n')[0]
                 print(f"    点击: {title}")
 
-                # 强制同一标签页打开
-                driver.execute_script("arguments[0].target = '_self';", daily_links[task_num])
-                daily_links[task_num].click()
+                # 用 JS 点击绕过元素遮挡
+                driver.execute_script("arguments[0].click();", daily_links[task_num])
                 time.sleep(6)
 
                 # 回到主页面

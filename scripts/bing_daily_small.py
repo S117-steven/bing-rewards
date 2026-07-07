@@ -209,13 +209,21 @@ def complete_daily_set(driver):
             pass
         try:
             driver.execute_script("""
+                var closeBtn = document.querySelector('#rewid-f .close_rewards_panel, #rewid-f button[class*=close]');
+                if (closeBtn) closeBtn.click();
                 var flyout = document.getElementById('rewid-f');
                 if (flyout) {
                     var iframe = flyout.querySelector('iframe');
                     if (iframe) iframe.remove();
+                    flyout.style.display = 'none';
                 }
             """)
             time.sleep(1)
+        except:
+            pass
+        try:
+            driver.find_element(By.TAG_NAME, "body").click()
+            time.sleep(0.5)
         except:
             pass
 
@@ -308,8 +316,8 @@ def complete_daily_set(driver):
                 title = daily_links[task_num].text.split('\n')[0]
                 print(f"    点击: {title}")
 
-                driver.execute_script("arguments[0].target = '_self';", daily_links[task_num])
-                daily_links[task_num].click()
+                # 用 JS 点击绕过元素遮挡
+                driver.execute_script("arguments[0].click();", daily_links[task_num])
                 time.sleep(6)
 
                 driver.switch_to.default_content()
