@@ -170,7 +170,25 @@ def complete_daily_set(driver):
     print("=" * 30)
 
     def open_sidebar():
-        """点击金牌图标，切换到 iframe"""
+        """关闭旧 iframe，点击金牌图标，切换到新 iframe"""
+        # 先关闭旧的 iframe
+        try:
+            driver.switch_to.default_content()
+        except:
+            pass
+        # 通过 JS 关闭 flyout
+        try:
+            driver.execute_script("""
+                var flyout = document.getElementById('rewid-f');
+                if (flyout) {
+                    var iframe = flyout.querySelector('iframe');
+                    if (iframe) iframe.remove();
+                }
+            """)
+            time.sleep(1)
+        except:
+            pass
+
         medal = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "div[data-rewards-widget] .b_clickarea"))
         )
@@ -197,10 +215,15 @@ def complete_daily_set(driver):
             text = card.text.strip() if card.text else ""
             if "每日集" in text or "Daily Set" in text.upper():
                 links = card.find_elements(By.TAG_NAME, "a")
-                visible_links = [l for l in links if l.is_displayed()]
-                if visible_links:
-                    print(f"    [debug] 方法1: 找到每日集卡片，{len(visible_links)} 个链接")
-                    return visible_links
+                # 只保留指向搜索页的真正任务链接，排除导航链接
+                task_links = []
+                for l in links:
+                    href = l.get_attribute("href") or ""
+                    if l.is_displayed() and ("bing.com/search" in href or "bing.com/shop" in href):
+                        task_links.append(l)
+                if task_links:
+                    print(f"    [debug] 方法1: 找到每日集卡片，{len(task_links)} 个任务链接")
+                    return task_links
 
         # 方法2：找 promo-title 元素，然后在其父容器中找链接
         promo_titles = driver.find_elements(By.CSS_SELECTOR, ".promo-title, [class*='promo']")
@@ -221,6 +244,18 @@ def complete_daily_set(driver):
                     if task_links:
                         print(f"    [debug] 方法2: 通过 promo-title 找到 {len(task_links)} 个任务链接")
                         return task_links
+
+        # 方法3：全局搜索所有指向搜索页的链接
+        all_links = driver.find_elements(By.TAG_NAME, "a")
+        task_links = []
+        for l in all_links:
+            href = l.get_attribute("href") or ""
+            text = l.text.strip() if l.text else ""
+            if l.is_displayed() and ("bing.com/search" in href or "bing.com/shop" in href) and text and len(text) > 3:
+                task_links.append(l)
+        if task_links:
+            print(f"    [debug] 方法3: 全局搜索找到 {len(task_links)} 个任务链接")
+            return task_links
 
         print("    [debug] 未找到 Daily Set 任务")
         return []
