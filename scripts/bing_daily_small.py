@@ -3,8 +3,10 @@ import random
 import string
 import os
 import json
+import re
 import shutil
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.edge.service import Service
@@ -128,7 +130,7 @@ def setup_driver():
     edge_options.add_argument("--disable-blink-features=AutomationControlled")
     edge_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     edge_options.add_experimental_option("useAutomationExtension", False)
-    edge_options.add_argument("--remote-debugging-port=9222")
+    # 不固定远程调试端口，避免重复运行或双号并发时复用旧 Edge 会话。
 
     current_folder = os.path.dirname(os.path.abspath(__file__))
     local_driver_path = os.path.join(current_folder, "msedgedriver.exe")
@@ -228,9 +230,9 @@ def complete_daily_set(driver):
             pass
 
         medal = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "div[data-rewards-widget] .b_clickarea"))
+            EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-rewards-widget] .b_clickarea"))
         )
-        medal.click()
+        driver.execute_script("arguments[0].click();", medal)
         time.sleep(4)
         iframe = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "#rewid-f iframe"))
@@ -252,6 +254,52 @@ def complete_daily_set(driver):
                 return link.is_displayed() and ("bing.com/search" in href or "bing.com/shop" in href)
             except:
                 return False
+
+        def extract_react_daily_set_tasks():
+            """从新版 Rewards 的 React 数据中提取当天真正的 Daily Set 任务。"""
+            try:
+                source = driver.page_source
+                # Rewards 页面把 RSC 数据放在 script 中，JSON 引号会被反斜杠转义。
+                pattern = re.compile(
+                    r'\\"date\\":\\"(?P<date>.*?)\\",\\"description\\":\\"(?P<description>.*?)'
+                    r'\\",\\"destination\\":\\"(?P<destination>.*?)\\",\\"hash\\":.*?'
+                    r'\\",\\"isCompleted\\":(?P<completed>true|false).*?'
+                    r'\\",\\"offerId\\":\\"(?P<offer>Global_DailySet_[0-9]+_Child[0-9]+)\\",'
+                    r'\\"points\\":(?P<points>[0-9]+),\\"title\\":\\"(?P<title>.*?)\\"'
+                )
+                matches = [m for m in pattern.finditer(source)
+                           if m.group("date") == datetime.now().strftime("%m/%d/%Y")]
+                if not matches:
+                    return None
+
+                def decode(value):
+                    try:
+                        return json.loads('"' + value + '"')
+                    except Exception:
+                        return value.replace(r"\u0026", "&").replace(r'\"', '"')
+
+                tasks = []
+                for match in matches:
+                    if match.group("completed") == "true":
+                        continue
+                    href = decode(match.group("destination"))
+                    title = decode(match.group("title"))
+                    if href and title:
+                        tasks.append({
+                            "href": href,
+                            "text": title,
+                            "offer_id": match.group("offer"),
+                        })
+
+                print(f"    [debug] 新版 Rewards 数据找到 {len(tasks)} 个当天未完成 Daily Set 任务")
+                return tasks
+            except Exception as e:
+                print(f"    [debug] 解析新版 Daily Set 数据失败: {e}")
+                return None
+
+        react_tasks = extract_react_daily_set_tasks()
+        if react_tasks is not None:
+            return react_tasks
 
         # 方法0：新版 Rewards React 面板中的「日常任务」卡片
         # 新版任务可能指向 Bing 首页活动（例如 Visual Search），不能只按 URL 判断。
@@ -336,29 +384,86 @@ def complete_daily_set(driver):
         print("    [debug] 未找到 Daily Set 任务")
         return []
 
+    def click_react_daily_task(task):
+        """在完整 Rewards dashboard 上点击新版任务卡片，触发官方完成追踪。"""
+        driver.switch_to.default_content()
+        driver.get("https://rewards.bing.com/dashboard")
+
+        expected_href = (task.get("href") or "").replace("&amp;", "&").rstrip("/").lower()
+        expected_title = " ".join((task.get("text") or "").split()).lower()
+
+        def click_current_task(current_driver):
+            return current_driver.execute_script("""
+                var offerId = arguments[0].toLowerCase();
+                var expectedHref = arguments[1].toLowerCase();
+                var expectedTitle = arguments[2].toLowerCase();
+                var normalize = function(value) {
+                    return (value || '').replace(/&amp;/g, '&').replace(/\\/$/, '').toLowerCase();
+                };
+                var anchors = Array.from(document.querySelectorAll('a'));
+                var taskAnchor = anchors.find(function(anchor) {
+                    var href = normalize(anchor.href);
+                    var text = (anchor.innerText || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                    var matches = href.indexOf(offerId) >= 0 ||
+                        (expectedHref && href === expectedHref) ||
+                        (expectedTitle && text.indexOf(expectedTitle) >= 0);
+                    var completed = text.indexOf('已完成') >= 0 || text.indexOf('completed') >= 0;
+                    var rect = anchor.getBoundingClientRect();
+                    return matches && !completed && rect.width > 0 && rect.height > 0;
+                });
+                if (!taskAnchor) return false;
+                taskAnchor.target = '_self';
+                taskAnchor.scrollIntoView({block: 'center'});
+                taskAnchor.click();
+                return true;
+            """, task["offer_id"], expected_href, expected_title)
+
+        WebDriverWait(driver, 20).until(click_current_task)
+
     try:
         print("正在打开 Bing 搜索页...")
         driver.get("https://www.bing.com")
         time.sleep(3)
 
         completed = 0
+        react_mode = False
+        react_queue = []
         for task_num in range(3):
             try:
-                print(f"\n>>> [小号任务 {task_num + 1}] 打开侧边栏...")
-                open_sidebar()
-
-                daily_links = find_daily_links()
+                if react_mode:
+                    # 新版页面一次读取后连续处理，避免每项任务之间重复切换 Rewards iframe。
+                    daily_links = react_queue
+                    print(f"\n>>> [小号任务 {task_num + 1}] 继续处理新版 Daily Set 队列...")
+                else:
+                    print(f"\n>>> [小号任务 {task_num + 1}] 打开侧边栏...")
+                    open_sidebar()
+                    daily_links = find_daily_links()
+                    if daily_links and isinstance(daily_links[0], dict):
+                        react_mode = True
+                        react_queue = daily_links
                 print(f"    找到 {len(daily_links)} 个 Daily Set 任务")
 
-                if task_num >= len(daily_links):
+                if not daily_links:
                     print(f"    没有更多任务了，共完成 {completed} 个")
                     break
 
-                title = daily_links[task_num].text.split('\n')[0]
+                if isinstance(daily_links[0], dict):
+                    # 新版页面完成一项后会把它从待办列表移除，因此取第一个剩余任务。
+                    task = daily_links.pop(0)
+                else:
+                    if task_num >= len(daily_links):
+                        print(f"    没有更多任务了，共完成 {completed} 个")
+                        break
+                    task = daily_links[task_num]
+
+                title = task["text"] if isinstance(task, dict) else task.text.split('\n')[0]
                 print(f"    点击: {title}")
 
-                # 用当前标签页的 JS 点击绕过元素遮挡和 target=_blank
-                driver.execute_script("arguments[0].target='_self'; arguments[0].click();", daily_links[task_num])
+                if isinstance(task, dict):
+                    click_react_daily_task(task)
+                else:
+                    # 用当前标签页的 JS 点击绕过元素遮挡和 target=_blank
+                    driver.execute_script("arguments[0].target='_self'; arguments[0].click();", task)
                 time.sleep(6)
 
                 driver.switch_to.default_content()
@@ -370,8 +475,9 @@ def complete_daily_set(driver):
                 completed += 1
                 print(f"    [状态] 任务 {task_num + 1} 完成")
 
-                driver.get("https://www.bing.com")
-                time.sleep(3)
+                if not isinstance(task, dict):
+                    driver.get("https://www.bing.com")
+                    time.sleep(3)
 
             except Exception as e:
                 print(f"    [错误] 任务 {task_num + 1} 异常: {e}")
