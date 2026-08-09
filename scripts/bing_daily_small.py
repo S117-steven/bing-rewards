@@ -245,6 +245,14 @@ def complete_daily_set(driver):
         except:
             pass
 
+        def is_task_link(link):
+            """判断链接是否是可见的 Daily Set 搜索/购物任务链接"""
+            try:
+                href = (link.get_attribute("href") or "").lower()
+                return link.is_displayed() and ("bing.com/search" in href or "bing.com/shop" in href)
+            except:
+                return False
+
         # 方法1：找 dailycheckin_partnercard 中的「每日集」卡片
         cards = driver.find_elements(By.CSS_SELECTOR, ".dailycheckin_partnercard")
         for card in cards:
@@ -253,18 +261,18 @@ def complete_daily_set(driver):
                 links = card.find_elements(By.TAG_NAME, "a")
                 task_links = []
                 for l in links:
-                    href = l.get_attribute("href") or ""
-                    if l.is_displayed() and ("bing.com/search" in href or "bing.com/shop" in href):
+                    if is_task_link(l):
                         task_links.append(l)
                 if task_links:
                     print(f"    [debug] 方法1: 找到每日集卡片，{len(task_links)} 个任务链接")
                     return task_links
 
-        # 方法2：找 promo-title 元素
+        # 方法2：找 promo-title 元素。
+        # 标题会随账号、语言和日期变化，不能依赖固定关键词。
         promo_titles = driver.find_elements(By.CSS_SELECTOR, ".promo-title, [class*='promo']")
         for pt in promo_titles:
             text = pt.text.strip() if pt.text else ""
-            if text and len(text) > 3 and ("购物" in text or "探索" in text or "大雾" in text or "银河" in text or "传奇" in text or "喜剧" in text or "冰川" in text):
+            if text and len(text) > 3:
                 parent = driver.execute_script("""
                     var el = arguments[0];
                     for (var i = 0; i < 5; i++) {
@@ -275,7 +283,7 @@ def complete_daily_set(driver):
                 """, pt)
                 if parent:
                     links = parent.find_elements(By.TAG_NAME, "a")
-                    task_links = [l for l in links if "bing.com/search" in (l.get_attribute("href") or "") or "bing.com/shop" in (l.get_attribute("href") or "")]
+                    task_links = [l for l in links if is_task_link(l)]
                     if task_links:
                         print(f"    [debug] 方法2: 通过 promo-title 找到 {len(task_links)} 个任务链接")
                         return task_links
@@ -284,9 +292,8 @@ def complete_daily_set(driver):
         all_links = driver.find_elements(By.TAG_NAME, "a")
         task_links = []
         for l in all_links:
-            href = l.get_attribute("href") or ""
             text = l.text.strip() if l.text else ""
-            if l.is_displayed() and ("bing.com/search" in href or "bing.com/shop" in href) and text and len(text) > 3:
+            if is_task_link(l) and text and len(text) > 3:
                 task_links.append(l)
         if task_links:
             print(f"    [debug] 方法3: 全局搜索找到 {len(task_links)} 个任务链接")
