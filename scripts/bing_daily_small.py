@@ -253,6 +253,40 @@ def complete_daily_set(driver):
             except:
                 return False
 
+        # 方法0：新版 Rewards React 面板中的「日常任务」卡片
+        # 新版任务可能指向 Bing 首页活动（例如 Visual Search），不能只按 URL 判断。
+        headers = driver.find_elements(By.TAG_NAME, "h2")
+        for header in headers:
+            header_text = " ".join((header.text or "").split())
+            if header_text != "日常任务" and "daily" not in header_text.lower():
+                continue
+            panel = driver.execute_script("""
+                var header = arguments[0];
+                var disclosure = header.closest('.react-aria-Disclosure');
+                return disclosure ? disclosure.querySelector('.react-aria-DisclosurePanel') : null;
+            """, header)
+            if not panel:
+                continue
+
+            task_links = []
+            for link in panel.find_elements(By.TAG_NAME, "a"):
+                try:
+                    if not link.is_displayed():
+                        continue
+                    href = (link.get_attribute("href") or "").lower()
+                    text = " ".join((link.text or "").split())
+                except:
+                    continue
+                if not text or "已完成" in text or "completed" in text.lower():
+                    continue
+                if "referandearn" in href or "/refer/" in href:
+                    continue
+                task_links.append(link)
+
+            if task_links:
+                print(f"    [debug] 方法0: 新版日常任务面板找到 {len(task_links)} 个待完成任务")
+                return task_links
+
         # 方法1：找 dailycheckin_partnercard 中的「每日集」卡片
         cards = driver.find_elements(By.CSS_SELECTOR, ".dailycheckin_partnercard")
         for card in cards:
@@ -323,8 +357,8 @@ def complete_daily_set(driver):
                 title = daily_links[task_num].text.split('\n')[0]
                 print(f"    点击: {title}")
 
-                # 用 JS 点击绕过元素遮挡
-                driver.execute_script("arguments[0].click();", daily_links[task_num])
+                # 用当前标签页的 JS 点击绕过元素遮挡和 target=_blank
+                driver.execute_script("arguments[0].target='_self'; arguments[0].click();", daily_links[task_num])
                 time.sleep(6)
 
                 driver.switch_to.default_content()
