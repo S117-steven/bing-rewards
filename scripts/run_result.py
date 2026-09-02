@@ -46,24 +46,53 @@ def _decode_rsc_value(value: str) -> str:
         return value.replace(r"\u0026", "&").replace(r'\"', '"')
 
 
+def _parse_rewards_date(value: str):
+    try:
+        return datetime.strptime(value, "%m/%d/%Y")
+    except (TypeError, ValueError):
+        return None
+
+
 def extract_react_daily_set_state(source: str, today: str | None = None):
-    """Return the current day's Daily Set state, or ``None`` if not parsed.
+    """Return the active Daily Set state, or ``None`` if it cannot be parsed.
 
     The return value contains all records, including completed records.  That
     distinction is important: an empty pending list can mean either that all
     tasks are already complete or that the page parser failed.
+
+    Microsoft Rewards does not reset at local midnight in every region. Around
+    that boundary the page can still expose the previous Daily Set while it
+    shows a reset countdown. If the requested local date is absent, use the
+    newest Rewards date not later than the requested date.
     """
 
-    today = today or datetime.now().strftime("%m/%d/%Y")
-    matches = []
+    requested_date = today or datetime.now().strftime("%m/%d/%Y")
+    matches_by_date = {}
     for pattern in _REACT_PATTERNS:
-        matches = [match for match in pattern.finditer(source or "")
-                   if match.group("date") == today]
-        if matches:
-            break
+        for match in pattern.finditer(source or ""):
+            date_value = match.group("date")
+            if _parse_rewards_date(date_value) is not None:
+                matches_by_date.setdefault(date_value, []).append(match)
 
-    if not matches:
+    if not matches_by_date:
         return None
+
+    if requested_date in matches_by_date:
+        effective_date = requested_date
+    else:
+        requested_dt = _parse_rewards_date(requested_date)
+        dated_matches = [
+            (date_value, _parse_rewards_date(date_value))
+            for date_value in matches_by_date
+        ]
+        not_later = [item for item in dated_matches if requested_dt and item[1] <= requested_dt]
+        if not_later:
+            effective_date = max(not_later, key=lambda item: item[1])[0]
+        else:
+            # This only applies if the local clock is behind the service date.
+            effective_date = min(dated_matches, key=lambda item: item[1])[0]
+
+    matches = matches_by_date[effective_date]
 
     by_offer = {}
     for match in matches:
@@ -93,7 +122,7 @@ def extract_react_daily_set_state(source: str, today: str | None = None):
     pending_tasks = [task for task in tasks if not task["completed"]]
     completed_tasks = [task for task in tasks if task["completed"]]
     return {
-        "date": today,
+        "date": effective_date,
         "total": len(tasks),
         "completed": len(completed_tasks),
         "pending": len(pending_tasks),

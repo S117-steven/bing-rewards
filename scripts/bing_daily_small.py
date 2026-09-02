@@ -3,7 +3,6 @@ import random
 import string
 import os
 import json
-import re
 import shutil
 import subprocess
 from datetime import datetime
@@ -225,12 +224,18 @@ def perform_daily_searches(driver):
 
 
 def complete_daily_set(driver):
-    """完成 Daily Set，并在 Rewards 页面确认每项任务已记账。"""
+    """完成 Daily Set，并在 Rewards 页面确认每项任务已记账。
+
+    rewards.bing.com 仪表盘的 React 数据是唯一能可靠反映任务记账状态的数据源
+    （旧版 bing.com 侧边栏面板不含该数据，且内容刷新滞后），因此发现、点击、
+    校验都优先走仪表盘，读不到时才回退到旧版侧边栏的 DOM 探测。
+    """
     print("\n" + "=" * 30)
     print(">>> [小号] 阶段 2: 开始每日任务")
     print("=" * 30)
 
     stats = {
+        "date": None,
         "expected": 0,
         "detected": 0,
         "completed": 0,
@@ -295,7 +300,7 @@ def complete_daily_set(driver):
             })
             print(
                 f"    [debug] 新版 Rewards 数据找到 {react_state['pending']} 个当天未完成 "
-                f"Daily Set 任务（总数 {react_state['total']}）"
+                f"Daily Set 任务（总数 {react_state['total']}，结算日 {react_state['date']}）"
             )
             return react_state["pending_tasks"]
 
@@ -314,42 +319,16 @@ def complete_daily_set(driver):
                 return False
 
         def extract_react_daily_set_tasks():
-            """从新版 Rewards 的 React 数据中提取当天真正的 Daily Set 任务。"""
+            """从新版 Rewards 的 React 数据中提取当前有效的 Daily Set 任务。"""
             try:
-                source = driver.page_source
-                # Rewards 页面把 RSC 数据放在 script 中，JSON 引号会被反斜杠转义。
-                pattern = re.compile(
-                    r'\\"date\\":\\"(?P<date>.*?)\\",\\"description\\":\\"(?P<description>.*?)'
-                    r'\\",\\"destination\\":\\"(?P<destination>.*?)\\",\\"hash\\":.*?'
-                    r'\\",\\"isCompleted\\":(?P<completed>true|false).*?'
-                    r'\\",\\"offerId\\":\\"(?P<offer>Global_DailySet_[0-9]+_Child[0-9]+)\\",'
-                    r'\\"points\\":(?P<points>[0-9]+),\\"title\\":\\"(?P<title>.*?)\\"'
-                )
-                matches = [m for m in pattern.finditer(source)
-                           if m.group("date") == datetime.now().strftime("%m/%d/%Y")]
-                if not matches:
+                state = extract_react_daily_set_state(driver.page_source)
+                if state is None:
                     return None
-
-                def decode(value):
-                    try:
-                        return json.loads('"' + value + '"')
-                    except Exception:
-                        return value.replace(r"\u0026", "&").replace(r'\"', '"')
-
-                tasks = []
-                for match in matches:
-                    if match.group("completed") == "true":
-                        continue
-                    href = decode(match.group("destination"))
-                    title = decode(match.group("title"))
-                    if href and title:
-                        tasks.append({
-                            "href": href,
-                            "text": title,
-                            "offer_id": match.group("offer"),
-                        })
-
-                print(f"    [debug] 新版 Rewards 数据找到 {len(tasks)} 个当天未完成 Daily Set 任务")
+                tasks = state["pending_tasks"]
+                print(
+                    f"    [debug] 新版 Rewards 数据找到 {len(tasks)} 个未完成 "
+                    f"Daily Set 任务（结算日 {state['date']}）"
+                )
                 return tasks
             except Exception as e:
                 print(f"    [debug] 解析新版 Daily Set 数据失败: {e}")
@@ -455,13 +434,23 @@ def complete_daily_set(driver):
                         print(f"    [debug] 方法2: 通过 promo-title 找到 {len(task_links)} 个任务链接")
                         return task_links
 
-        # 方法3：全局搜索
+        # 方法3：全局搜索所有指向搜索页的链接。
+        # 卡片标题不一定出现在 <a> 的可见文本里（链接文本可能为空），
+        # 侧边栏面板中指向 bing.com/search|shop 的可见链接就是任务卡片。
         all_links = driver.find_elements(By.TAG_NAME, "a")
         task_links = []
+        seen_hrefs = set()
         for l in all_links:
-            text = l.text.strip() if l.text else ""
-            if is_task_link(l) and text and len(text) > 3:
-                task_links.append(l)
+            try:
+                if not is_task_link(l):
+                    continue
+                href = (l.get_attribute("href") or "").split("#")[0]
+            except Exception:
+                continue
+            if href.lower() in seen_hrefs:
+                continue
+            seen_hrefs.add(href.lower())
+            task_links.append(l)
         if task_links:
             discovery.update({
                 "source": "dom",
@@ -483,7 +472,21 @@ def complete_daily_set(driver):
     def click_react_daily_task(task):
         """在完整 Rewards dashboard 上点击新版任务卡片，触发官方完成追踪。"""
         driver.switch_to.default_content()
-        driver.get("https://rewards.bing.com/dashboard")
+        driver.get(DASHBOARD_URL)
+        time.sleep(1)
+        # 部分账号的「每日」区块默认折叠，先展开再找任务卡片
+        driver.execute_script("""
+            var toggles = document.querySelectorAll('button[aria-expanded="false"]');
+            for (var i = 0; i < toggles.length; i++) {
+                var label = ((toggles[i].innerText || '') + ' ' +
+                    (toggles[i].getAttribute('aria-label') || '')).toLowerCase();
+                if (label.indexOf('每日') >= 0 || label.indexOf('daily') >= 0) {
+                    toggles[i].click();
+                    break;
+                }
+            }
+        """)
+        time.sleep(1)
 
         expected_href = (task.get("href") or "").replace("&amp;", "&").rstrip("/").lower()
         expected_title = " ".join((task.get("text") or "").split()).lower()
@@ -546,19 +549,40 @@ def complete_daily_set(driver):
         right_title = " ".join((right.get("text") or "").split()).lower()
         return bool(left_title and right_title and (left_title in right_title or right_title in left_title))
 
-    def verify_react_task(task):
-        """Reload the dashboard until the target offer is no longer pending."""
-        deadline = time.time() + 30
-        target_offer = str(task.get("offer_id") or "").lower()
-        while time.time() < deadline:
+    def load_dashboard_state(attempts=3):
+        """打开 Rewards 仪表盘并解析当天 Daily Set 状态；解析失败返回 None。"""
+        for _ in range(attempts):
             try:
                 driver.switch_to.default_content()
                 driver.get(DASHBOARD_URL)
-                time.sleep(2)
+                time.sleep(3)
                 state = extract_react_daily_set_state(driver.page_source)
             except Exception as e:
-                print(f"    [校验] 刷新 Rewards 状态失败: {e}")
+                print(f"    [debug] 读取 Rewards 仪表盘失败: {e}")
                 state = None
+            if state is not None:
+                return state
+            time.sleep(2)
+        return None
+
+    def verify_task_completed(snapshot):
+        """确认任务已在 Rewards 记账：仪表盘数据优先，读不到时对比侧边栏待办。
+
+        旧版侧边栏面板的内容刷新滞后，任务完成后仍可能显示未完成，
+        因此只有仪表盘数据不可用时才把它作为依据。
+        """
+        target_offer = str(snapshot.get("offer_id") or "").lower()
+        deadline = time.time() + 45
+        while time.time() < deadline:
+            state = None
+            if target_offer:
+                try:
+                    driver.switch_to.default_content()
+                    driver.get(DASHBOARD_URL)
+                    time.sleep(3)
+                    state = extract_react_daily_set_state(driver.page_source)
+                except Exception as e:
+                    print(f"    [校验] 读取 Rewards 状态失败: {e}")
 
             if state is not None:
                 matches = [
@@ -568,78 +592,116 @@ def complete_daily_set(driver):
                 if not matches or all(item.get("completed") for item in matches):
                     print("    [校验] Rewards 已确认该任务完成")
                     return True
-                print("    [校验] 任务仍显示未完成，继续等待...")
-            else:
-                # Some Edge versions expose the React data only inside the
-                # Rewards iframe.  Fall back to the pending-list comparison
-                # instead of treating that page-source variant as success.
-                try:
-                    driver.get("https://www.bing.com")
-                    time.sleep(3)
-                    open_sidebar()
-                    pending = find_daily_links()
-                    if discovery.get("parsed"):
-                        pending_snapshots = [task_snapshot(item) for item in pending]
-                        if not any(tasks_match(task, item) for item in pending_snapshots):
-                            print("    [校验] Rewards 待办列表已移除该任务")
-                            return True
-                except Exception as e:
-                    print(f"    [校验] iframe 状态读取失败: {e}")
+                print(f"    [校验] 任务仍显示未完成，继续等待...（今日剩余 {state['pending']} 个）")
+                time.sleep(3)
+                continue
 
-            time.sleep(2)
-        return False
-
-    def verify_dom_task(task):
-        """Reload the legacy panel and confirm the clicked task left the pending list."""
-        deadline = time.time() + 30
-        while time.time() < deadline:
+            # 没有 offer_id（旧版侧边栏元素）或本次仪表盘解析失败时，
+            # 才用侧边栏待办列表对比作为后备依据。
             try:
-                driver.switch_to.default_content()
                 driver.get("https://www.bing.com")
                 time.sleep(3)
                 open_sidebar()
                 pending = find_daily_links()
+                if discovery.get("parsed"):
+                    pending_snapshots = [task_snapshot(item) for item in pending]
+                    if not any(tasks_match(snapshot, item) for item in pending_snapshots):
+                        print("    [校验] Rewards 待办列表已移除该任务")
+                        return True
+                    print("    [校验] 任务仍显示未完成，继续等待...")
             except Exception as e:
-                print(f"    [校验] 刷新 Daily Set 状态失败: {e}")
-                pending = None
-
-            if pending is not None and discovery.get("parsed"):
-                pending_snapshots = [task_snapshot(item) for item in pending]
-                if not any(tasks_match(task, item) for item in pending_snapshots):
-                    print("    [校验] Rewards 已确认该任务完成")
-                    return True
-                print("    [校验] 任务仍显示未完成，继续等待...")
-
-            time.sleep(2)
+                print(f"    [校验] 侧边栏状态读取失败: {e}")
+            time.sleep(3)
         return False
 
-    try:
-        print("正在打开 Bing 搜索页...")
+    def rediscover_dom_task(snapshot):
+        """重新打开侧边栏并定位与快照匹配的任务元素，避免点击失效的旧引用。"""
+        driver.switch_to.default_content()
         driver.get("https://www.bing.com")
         time.sleep(3)
+        open_sidebar()
+        for item in find_daily_links():
+            if tasks_match(snapshot, task_snapshot(item)):
+                return item
+        return None
 
+    def run_react_mode(state):
+        """仪表盘模式：逐个点击待办卡片，并在仪表盘上复核记账。
+
+        单个任务校验失败只跳过该任务，不再中断剩余任务。
+        返回 (已确认完成数, 最终仪表盘状态或 None)。
+        """
         completed = 0
+        pending = list(state["pending_tasks"])
+        for _ in range(3):  # 最多重扫 3 轮，防止异常数据导致死循环
+            if not pending:
+                break
+            task = pending[0]
+            title = (task.get("text") or "未命名任务").strip()
+            print(f"\n>>> [小号任务 {completed + 1}] 点击: {title}")
+
+            verified = False
+            for attempt in range(1, 3):
+                try:
+                    click_react_daily_task(task)
+                    time.sleep(6)
+                    verified = verify_task_completed(task)
+                except Exception as e:
+                    print(f"    [错误] 任务第 {attempt} 次异常: {e}")
+                if verified:
+                    break
+                print(f"    [校验] 第 {attempt} 次未确认完成，准备重试...")
+
+            if not verified:
+                print(f"    [失败] 任务“{title}”未通过 Rewards 完成校验，跳过并继续后面的任务")
+                pending = pending[1:]
+                continue
+
+            completed += 1
+            stats["completed"] = completed
+            print("    [状态] 任务已确认完成")
+            fresh = load_dashboard_state()
+            pending = fresh["pending_tasks"] if fresh is not None else pending[1:]
+
+        return completed, load_dashboard_state()
+
+    def run_dom_mode():
+        """旧版侧边栏模式：仪表盘数据读不到时的后备路径。
+
+        返回 (已确认完成数, 剩余任务数或 None)。
+        """
+        completed = 0
+        failed_snapshots = []
         for task_num in range(3):
             print(f"\n>>> [小号任务 {task_num + 1}] 打开侧边栏...")
             driver.switch_to.default_content()
             driver.get("https://www.bing.com")
             time.sleep(3)
-            open_sidebar()
-            daily_links = find_daily_links()
-            print(f"    找到 {len(daily_links)} 个 Daily Set 任务")
+            try:
+                open_sidebar()
+                daily_links = find_daily_links()
+            except Exception as e:
+                print(f"    [错误] 打开侧边栏失败: {e}")
+                daily_links = []
+            # 校验失败过的任务本轮不再重复点击，只处理其余任务
+            candidates = [
+                link for link in daily_links
+                if not any(tasks_match(f, task_snapshot(link)) for f in failed_snapshots)
+            ]
+            print(f"    找到 {len(candidates)} 个待完成的 Daily Set 任务")
 
             stats["expected"] = max(stats["expected"], discovery.get("total", 0))
             stats["detected"] = max(stats["detected"], discovery.get("total", 0))
 
-            if not daily_links:
+            if not candidates:
                 if discovery.get("parsed"):
                     print(f"    当前没有待完成任务，已验证完成 {completed} 个")
                     break
                 stats.update({"status": "not_detected", "success": False})
                 print("    [失败] 未能可靠读取 Daily Set 状态，不能判定为成功")
-                return stats
+                return completed, None
 
-            task = daily_links[0]
+            task = candidates[0]
             snapshot = task_snapshot(task)
             title = snapshot.get("text") or "未命名任务"
             print(f"    点击: {title}")
@@ -647,27 +709,22 @@ def complete_daily_set(driver):
             verified = False
             for attempt in range(1, 3):
                 try:
-                    if isinstance(task, dict):
-                        click_react_daily_task(task)
-                    else:
-                        # 用当前标签页的 JS 点击绕过元素遮挡和 target=_blank
-                        driver.execute_script(
-                            "arguments[0].target='_self'; arguments[0].click();", task
-                        )
+                    if attempt > 1:
+                        # 第一次点击后原页面已跳转，旧元素引用已失效，必须重新查找
+                        rediscovered = rediscover_dom_task(snapshot)
+                        if rediscovered is None:
+                            raise RuntimeError("重试时未能在侧边栏中重新找到该任务")
+                        task = rediscovered
+                    # 用当前标签页的 JS 点击绕过元素遮挡和 target=_blank
+                    driver.execute_script(
+                        "arguments[0].target='_self'; arguments[0].click();", task
+                    )
                     time.sleep(6)
-
                     driver.switch_to.default_content()
                     print(f"    [状态] 跳转成功: {driver.current_url[:60]}...")
                     driver.execute_script("window.scrollTo(0, 200);")
                     time.sleep(random.uniform(3, 5))
-
-                    if isinstance(task, dict):
-                        verified = verify_react_task(snapshot)
-                    else:
-                        verified = verify_dom_task(snapshot)
-                    if verified:
-                        break
-                    print(f"    [校验] 第 {attempt} 次未确认完成，准备重试...")
+                    verified = verify_task_completed(snapshot)
                 except Exception as e:
                     print(f"    [错误] 任务 {task_num + 1} 第 {attempt} 次异常: {e}")
                     try:
@@ -676,42 +733,91 @@ def complete_daily_set(driver):
                         time.sleep(3)
                     except Exception:
                         pass
+                if verified:
+                    break
+                print(f"    [校验] 第 {attempt} 次未确认完成，准备重试...")
 
             if not verified:
-                stats.update({"status": "verification_failed", "success": False})
-                print(f"    [失败] 任务“{title}”未通过 Rewards 完成校验")
-                return stats
+                failed_snapshots.append(snapshot)
+                print(f"    [失败] 任务“{title}”未通过 Rewards 完成校验，跳过并继续后面的任务")
+                continue
 
             completed += 1
             stats["completed"] = completed
             print(f"    [状态] 任务 {task_num + 1} 已确认完成")
 
-        # 最后再读一次待办列表，防止固定处理三项后仍有任务未完成。
+        # 最后再读一次待办列表，防止还有遗漏的任务。
         driver.switch_to.default_content()
         driver.get("https://www.bing.com")
         time.sleep(3)
-        open_sidebar()
-        remaining = find_daily_links()
+        try:
+            open_sidebar()
+            remaining = find_daily_links()
+        except Exception as e:
+            print(f"[错误] 最终校验读取侧边栏失败: {e}")
+            return completed, None
         if not discovery.get("parsed"):
+            return completed, None
+        return completed, len(remaining)
+
+    try:
+        print("正在读取 Rewards 仪表盘数据...")
+        state = load_dashboard_state()
+        if state is not None:
+            stats["date"] = state["date"]
+            stats["expected"] = state["total"]
+            stats["detected"] = state["total"]
+            print(
+                f"    仪表盘数据：共 {state['total']} 个 Daily Set 任务，"
+                f"已完成 {state['completed']} 个，待完成 {state['pending']} 个，"
+                f"结算日 {state['date']}"
+            )
+            completed, final = run_react_mode(state)
+            stats["completed"] = completed
+            if final is None:
+                stats.update({"status": "verification_failed", "success": False})
+                print("[失败] 无法读取最终 Daily Set 状态")
+                return stats
+            stats["pending"] = final["pending"]
+            stats["date"] = final["date"]
+            stats["expected"] = max(stats["expected"], final["total"])
+            stats["detected"] = max(stats["detected"], final["total"])
+            if stats["pending"] == 0:
+                stats.update({
+                    "status": "already_completed" if completed == 0 else "completed",
+                    "success": True,
+                })
+                print(
+                    f"\n>>> [小号] Daily Set 已验证完成：本次确认 {completed} 个，"
+                    f"当前剩余 {stats['pending']} 个"
+                )
+                return stats
+            stats.update({"status": "verification_failed", "success": False})
+            print(f"[失败] 仍有 {stats['pending']} 个 Daily Set 任务未完成")
+            return stats
+
+        print("    [debug] 仪表盘数据不可用，回退到旧版侧边栏模式")
+        completed, remaining = run_dom_mode()
+        stats["completed"] = completed
+        if remaining is None:
             stats.update({"status": "not_detected", "success": False})
             print("[失败] 最终校验无法读取 Daily Set 状态")
             return stats
-        stats["pending"] = len(remaining)
-        stats["expected"] = max(stats["expected"], completed + stats["pending"])
+        stats["pending"] = remaining
+        stats["expected"] = max(stats["expected"], completed + remaining)
         stats["detected"] = max(stats["detected"], stats["expected"])
-        if remaining:
-            stats.update({"status": "pending", "success": False})
-            print(f"[失败] 仍有 {len(remaining)} 个 Daily Set 任务未完成")
+        if remaining == 0:
+            stats.update({
+                "status": "already_completed" if completed == 0 else "completed",
+                "success": True,
+            })
+            print(
+                f"\n>>> [小号] Daily Set 已验证完成：本次确认 {completed} 个，"
+                f"当前剩余 {stats['pending']} 个"
+            )
             return stats
-
-        stats.update({
-            "status": "already_completed" if completed == 0 else "completed",
-            "success": True,
-        })
-        print(
-            f"\n>>> [小号] Daily Set 已验证完成：本次确认 {completed} 个，"
-            f"当前剩余 {stats['pending']} 个"
-        )
+        stats.update({"status": "pending", "success": False})
+        print(f"[失败] 仍有 {remaining} 个 Daily Set 任务未完成")
         return stats
 
     except Exception as e:
